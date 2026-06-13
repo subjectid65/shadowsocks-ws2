@@ -10,6 +10,9 @@
   "workspaces": [
     "local"
   ],
+  "browser": {
+  "zlib": false
+},
   "scripts": {
     "dev": "rollup -c && node --enable-source-maps server.min.mjs",
     "build": "rollup -c",
