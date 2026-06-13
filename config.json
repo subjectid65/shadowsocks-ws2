@@ -5,6 +5,6 @@
   "local_address": "127.0.0.1",
   "local_port": 8000,
   "timeout": 5000,
-  "password": "notfre",
+  "password": "shadow",
   "method": "aes-256-gcm"
 }
