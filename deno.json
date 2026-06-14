@@ -6,6 +6,7 @@
    "https": "node:https",
     "http": "node:http",
     "stream": "node:stream",
-     "fs": "node:fs"
+     "fs": "node:fs",
+    "crypto":"node:crypto"
   }
 }
