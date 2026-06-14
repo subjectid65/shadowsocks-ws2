@@ -1,6 +1,7 @@
 {
   "imports": {
     "zlib": "node:zlib",
-     "tls": "node:tls"
+     "tls": "node:tls",
+    "net": "node:net"
   }
 }
