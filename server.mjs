@@ -24,7 +24,7 @@ const CLOSED = 'closed'
 const OPENING = 'opening'
 const OPEN = 'open'
 const WRITING = 'writing'
-
+const zlib = require('node:zlib');
 
 const dump = (from, to, stage) => `from=${from.blue} to=${to.cyan} stage=${stage.green}`
 
