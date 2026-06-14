@@ -1,7 +1,7 @@
 {
   "nameserver": "https://dns.alidns.com/dns-query",
-  "server": "0.0.0.0",
-  "server_address": "0.0.0.0",
+  "server": "https://localhost",
+  "server_address": "[]",
   "local_address": "127.0.0.1",
   "local_port": 8787,
   "password": "secret",
