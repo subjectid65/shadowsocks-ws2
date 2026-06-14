@@ -8,6 +8,7 @@
     "stream": "node:stream",
      "fs": "node:fs",
     "crypto":"node:crypto",
-      "path":"node:path"
+      "path":"node:path",
+       "tty":"node:tty"
   }
 }
