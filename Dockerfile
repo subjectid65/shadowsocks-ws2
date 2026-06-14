@@ -1,1 +1,1 @@
-CMD ["npm", "start"]
+npm start
