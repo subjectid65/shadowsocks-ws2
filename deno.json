@@ -1,5 +1,5 @@
 {
-  "tasks": {
-    "start": "npm start"
+  "imports": {
+    "zlib": "node:zlib"
   }
 }
