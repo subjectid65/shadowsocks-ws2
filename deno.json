@@ -7,6 +7,7 @@
     "http": "node:http",
     "stream": "node:stream",
      "fs": "node:fs",
-    "crypto":"node:crypto"
+    "crypto":"node:crypto",
+      "path":"node:path"
   }
 }
