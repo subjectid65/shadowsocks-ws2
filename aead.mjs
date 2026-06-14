@@ -62,7 +62,7 @@ export class AEAD {
   }
 
   encrypt(m) {
-    const e = createCipheriv(this.algorithm, this.key, this.nonce, this.options)
+    const e = createCipheriv(this.algorithm, Buffer.from(this.key), this.nonce, this.options)
     const c = []
     c.push(e.update(m))
     c.push(e.final())
