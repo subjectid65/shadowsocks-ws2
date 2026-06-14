@@ -10,7 +10,9 @@
   "workspaces": [
     "local"
   ],
-  
+  "overrides": {
+  "buffer": "^4.9.2"
+},
   "scripts": {
     "dev": "rollup -c && node --enable-source-maps server.min.mjs",
     "build": "rollup -c",
