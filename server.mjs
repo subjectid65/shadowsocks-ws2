@@ -39,7 +39,7 @@ const CERT_KEY = readEnv('CERT_KEY', '')
 const CERT = readEnv('CERT', '')
 const EN_TLS = CERT_KEY.length !== 0 && CERT.length !== 0
 
-const PORT = readEnv('PORT', EN_TLS ? 443 : 80)
+const PORT = readEnv('PORT', EN_TLS ? 443 : 8000)
 
 
 const { keySize: KEY_SIZE, saltSize: SALT_SIZE, tagSize: TAG_SIZE } = AEAD.getSize(METHOD)
