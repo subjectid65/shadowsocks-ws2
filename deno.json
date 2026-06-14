@@ -4,6 +4,7 @@
     "tls": "node:tls",
     "net": "node:net",
    "https": "node:https",
-    "http": "node:http"
+    "http": "node:http",
+    "stream": "node:stream"
   }
 }
