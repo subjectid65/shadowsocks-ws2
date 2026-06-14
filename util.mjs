@@ -5,32 +5,8 @@ import { debug, info, warn, error } from 'node:console'
 import { createHash } from 'node:crypto'
 import { createConnection } from 'node:net'
 
-function fromString(value, type) {
-  if (type === 'string') {
-    return value
-  }
-  let newValue =  new Uint8Array(); 
-  switch (type) {
-    case 'number':
-      newValue = Number(value)
-      break
-
-    case 'boolean':
-      switch (value.toLowerCase()) {
-        case 'true':
-        case 'on':
-          newValue = true
-          break
-
-        case 'false':
-        case 'off':
-          newValue = false
-          break
-      }
-      break
-  }
-  return newValue
-}
+import { isUint8Array } from 'uint8arrays/is-uint8array';
+import { fromString } from 'uint8arrays/from-string';
 
 export function readEnv(name, defaultValue, possibleValues = []) {
   if (name in env) {
