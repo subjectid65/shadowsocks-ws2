@@ -11,7 +11,7 @@
       "path":"node:path",
        "tty":"node:tty",
        "os":"node:os",
-    "util":'node:util',
+    "util":"node:util",
     "uint8arrays/from-string":"npm:uint8arrays/from-string"
   }
 }
