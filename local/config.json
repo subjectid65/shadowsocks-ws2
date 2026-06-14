@@ -1,7 +1,7 @@
 {
   "nameserver": "https://dns.alidns.com/dns-query",
-  "server": "https://*.up.railway.app/",
-  "server_address": [],
+  "server": "0.0.0.0",
+  "server_address": "0.0.0.0",
   "local_address": "127.0.0.1",
   "local_port": 8787,
   "password": "secret",
