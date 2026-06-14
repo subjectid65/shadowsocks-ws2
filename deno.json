@@ -9,6 +9,7 @@
      "fs": "node:fs",
     "crypto":"node:crypto",
       "path":"node:path",
-       "tty":"node:tty"
+       "tty":"node:tty",
+       "os":"node:os"
   }
 }
