@@ -9,7 +9,7 @@ function fromString(value, type) {
   if (type === 'string') {
     return value
   }
-  let newValue = null
+  let newValue =  new Uint8Array(); 
   switch (type) {
     case 'number':
       newValue = Number(value)
