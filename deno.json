@@ -5,7 +5,7 @@
     "net": "node:net",
    "https": "node:https",
     "http": "node:http",
-    "stream": "node:stream"
+    "stream": "node:stream",
      "fs": "node:fs"
   }
 }
