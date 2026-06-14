@@ -3,7 +3,7 @@
   "server": "https://localhost",
   "server_address": "[]",
   "local_address": "127.0.0.1",
-  "local_port": 8787,
+  "local_port": 8000,
   "password": "secret",
   "method": "aes-256-gcm",
   "timeout": 5000,
