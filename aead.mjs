@@ -1,4 +1,4 @@
-
+global.Buffer = global.Buffer || require('buffer').Buffer
 import { createDecipheriv, createCipheriv } from 'node:crypto'
 
 function increase(nonce) {
