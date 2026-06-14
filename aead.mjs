@@ -49,7 +49,7 @@ export class AEAD {
   }
 
   decrypt(c, tag) {
-    const d = createDecipheriv(this.algorithm, this.key, this.nonce, this.options)
+    const d = createDecipheriv(this.algorithm, (Buffer)this.key, this.nonce, this.options)
     const m = []
     m.push(d.setAuthTag(tag).update(c))
     try {
