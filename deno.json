@@ -3,6 +3,6 @@
     "zlib": "node:zlib",
     "tls": "node:tls",
     "net": "node:net",
-   "htpps": "node:https"
+   "https": "node:https"
   }
 }
