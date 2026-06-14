@@ -5,7 +5,7 @@ import { debug, info, warn, error } from 'node:console'
 import { createHash } from 'node:crypto'
 import { createConnection } from 'node:net'
 
-import { isUint8Array } from 'uint8arrays/is-uint8array';
+ 
 import { fromString } from 'uint8arrays/from-string';
 
 export function readEnv(name, defaultValue, possibleValues = []) {
