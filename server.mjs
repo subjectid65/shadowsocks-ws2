@@ -1,170 +1,223 @@
 
 import 'colors'
-import { createReadStream } from 'fs'
-import { createServer } from 'http'
-import { hkdfSync, randomBytes } from 'crypto'
+import { dirname } from 'node:path'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { hkdfSync, randomBytes } from 'node:crypto'
+ 
+import express from 'express'
+import { createProxyMiddleware } from 'http-proxy-middleware'
 import WebSocket, { WebSocketServer } from 'ws'
-import { keySize, saltSize, tagSize, AEAD } from './aead.mjs'
+
+import { AEAD } from './aead.mjs'
 import {
-  EVP_BytesToKey, createAndConnect, inetNtoa, inetNtop,
-  errorlog, warnlog, infolog, debuglog
-} from './helper.mjs'
+  readEnv, debuglog, infolog, warnlog, errorlog,
+  EVP_BytesToKey, connect, inet_ntoa, inet_ntop
+} from './util.mjs'
+ 
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 
-const METHOD = process.env.METHOD === 'aes-256-gcm' ? 'aes-256-gcm' : 'chacha20-poly1305'
-const PASS   = process.env.PASS    || 'secret'
-const PORT   = process.env.PORT    ||  80
 
-const KEY_SIZE  = keySize[METHOD]
-const SALT_SIZE = saltSize[METHOD]
-const TAG_SIZE  = tagSize[METHOD]
-
-const PAYLOAD_LENGTH_SIZE = 2
-const PAYLOAD_LENGTH_CHUNK_SIZE = 2 + TAG_SIZE
-
-const CLOSED  = 'closed'
+const CLOSED = 'closed'
 const OPENING = 'opening'
-const OPEN    = 'open'
+const OPEN = 'open'
+const WRITING = 'writing'
 
-const KEY = EVP_BytesToKey(PASS, KEY_SIZE).key
 
-const server = createServer((req, res) => {
-  res.statusCode = 200
-  res.setHeader('Content-Type', 'text/html')
-  createReadStream('./index.html').pipe(res)
+const dump = (from, to, stage) => `from=${from.blue} to=${to.cyan} stage=${stage.green}`
+
+
+const METHOD = readEnv('METHOD', 'aes-256-gcm', ['aes-256-gcm', 'chacha20-poly1305'])
+const PASS = readEnv('PASS', 'secret')
+
+const PROXY = readEnv('PROXY', '')
+const EN_PROXY = PROXY.length !== 0
+
+const CERT_KEY = readEnv('CERT_KEY', '')
+const CERT = readEnv('CERT', '')
+const EN_TLS = CERT_KEY.length !== 0 && CERT.length !== 0
+
+const PORT = readEnv('PORT', EN_TLS ? 443 : 8000)
+
+
+const { keySize: KEY_SIZE, saltSize: SALT_SIZE, tagSize: TAG_SIZE } = AEAD.getSize(METHOD)
+const { key: KEY } = EVP_BytesToKey(PASS, KEY_SIZE)
+
+
+const app = express()
+app.disable('x-powered-by')
+
+
+app.get('/generate_204', (req, res) => {
+  res.set('Connection', 'close')
+  res.status(204)
+  res.end()
 })
+
+
+if (EN_PROXY) {
+  app.use('/', createProxyMiddleware({
+    target: PROXY,
+    changeOrigin: true,
+    onError: (err, req, res) => {
+      res.status(500).sendFile(__dirname + '/50x.html')
+    }
+  }))
+} else {
+  app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/index.html')
+  })
+
+  app.use((req, res, next) => {
+    res.status(500).sendFile(__dirname + '/50x.html')
+  })
+}
+
+
+const { createServer } = EN_TLS
+  ? await import('node:https')
+  : await import('node:http')
+
+const server = EN_TLS
+  ? createServer({ minVersion: 'TLSv1.3', key: readFileSync(CERT_KEY), cert: readFileSync(CERT) }, app)
+  : createServer(app)
 
 const wss = new WebSocketServer({ server })
 
+
 wss.on('connection', (ws, req) => {
-  const from = `${req.socket.remoteAddress}:${req.socket.remotePort}`
+  // decryption context
+  let rx = [] // received bytes waiting to be decrypted
   let decipher = null
-  let cipher = null
-  let rx = [], tx = []
-  let pending = false
-  let length = 0
+  let cipherTextSize = 2
+  let chunkIndex = 0
   const payloads = []
-  let readyState = CLOSED
-  let to = 'null'
-  let remote = null
+
+  // encryption context
+  let tx = [] // encrypted chunks waiting to be sent
+  let cipher = null
+
+  // server context
+  let stage = CLOSED
+  const from = `${req.socket.remoteAddress}:${req.socket.remotePort}` // client address
+  let to = 'unknown' // target address
+  let remote = null // target socket
 
   debuglog(`client connected: ${from}`)
+
   ws.on('message', async (data) => {
+    // retrieve bytes received last time
+    if (rx.length > 0) {
+      rx.push(data)
+      data = Buffer.concat(rx)
+      rx = []
+    }
+
+    // init decipher
     if (decipher === null) {
-      const salt = data.slice(0, SALT_SIZE)
-      data = data.slice(SALT_SIZE)
+      if (data.length < SALT_SIZE) {
+        rx.push(data)
+        debuglog('more bytes needed')
+        return
+      }
+
+      const salt = Buffer.alloc(SALT_SIZE)
+      data.copy(salt, 0, 0, SALT_SIZE)
+      data = data.subarray(SALT_SIZE)
+
       const dk = hkdfSync('sha1', KEY, salt, 'ss-subkey', KEY_SIZE)
       decipher = new AEAD(METHOD, dk)
       debuglog('decipher initialized')
     }
 
-    if (rx.length > 0) {
-      rx.push(data)
-      data = Buffer.concat(rx)
-      rx = []
-
-      if (pending) {
-        const encryptedPayload = data.slice(0, length)
-        const payloadTag = data.slice(length, length + TAG_SIZE)
-        data = data.slice(length + TAG_SIZE)
-        const payload = decipher.decrypt(encryptedPayload, payloadTag)
-
-        if (payload === null) {
-          warnlog('invalid password or cipher', dump(from, to, readyState))
-          ws.terminate() // 'close' event will be called
-          return
-        }
-
-        payloads.push(payload)
-        debuglog('payload decrypted')
-        pending = false
-      }
-    }
-
+    // decrypt chunks
     while (data.length > 0) {
-      if (data.length < PAYLOAD_LENGTH_CHUNK_SIZE) {
+      const chunkSize = cipherTextSize + TAG_SIZE
+      if (data.length < chunkSize) {
         rx.push(data)
-        debuglog('no data')
+        debuglog('more bytes needed')
         break
       }
 
-      const encryptedPayloadLength = data.slice(0, PAYLOAD_LENGTH_SIZE)
-      const lengthTag = data.slice(PAYLOAD_LENGTH_SIZE, PAYLOAD_LENGTH_CHUNK_SIZE)
-      data = data.slice(PAYLOAD_LENGTH_CHUNK_SIZE)
-      length = decipher.decrypt(encryptedPayloadLength, lengthTag)
+      const chunk = data.subarray(0, chunkSize)
+      data = data.subarray(chunkSize)
 
-      if (length === null) {
-        warnlog('invalid password or cipher', dump(from, to, readyState))
+      const cipherText = chunk.subarray(0, cipherTextSize)
+      const authTag = chunk.subarray(cipherTextSize)
+      const plainText = decipher.decrypt(cipherText, authTag)
+
+      if (plainText === null) {
+        warnlog('invalid password or cipher', dump(from, to, stage))
         ws.terminate() // 'close' event will be called
         return
       }
-      length = length.readUInt16BE(0)
 
-      const chunkLength = length + TAG_SIZE
-      if (data.length < chunkLength) {
-        rx.push(data)
-        pending = true
-        debuglog('pending')
-        break
+      if (chunkIndex % 2 === 0) { // current chunk is length chunk
+        cipherTextSize = plainText.readUInt16BE(0)
+      } else { // current chunk is payload chunk
+        cipherTextSize = 2
+        payloads.push(plainText)
+        debuglog(`payload decrypted: ${plainText.length} bytes`)
       }
-
-      const encryptedPayload = data.slice(0, length)
-      const payloadTag = data.slice(length, chunkLength)
-      data = data.slice(chunkLength)
-      const payload = decipher.decrypt(encryptedPayload, payloadTag)
-      if (payload === null) {
-        warnlog('invalid password or cipher', dump(from, to, readyState))
-        ws.terminate() // 'close' event will be called
-        return
-      }
-      payloads.push(payload)
-      debuglog('payload decrypted')
+      chunkIndex++
     }
     data = null
 
-    if (readyState === OPENING || payloads.length === 0 || ws.isPaused) return
-    if (readyState === CLOSED) {
-      readyState = OPENING
-      ws.pause()
+    // consume payloads
+    if (payloads.length === 0) {
+      return
+    }
+    if (stage === OPENING || stage === WRITING) {
+      return
+    }
+    if (stage === CLOSED) {
+      stage = OPENING
 
       let addr, port
-      const address = payloads.shift()
+      let address = payloads.shift()
       switch (address[0]) {
         case 3: // Domain
-          addr = address.slice(2, 2 + address[1]).toString('binary')
+          addr = address.subarray(2, 2 + address[1]).toString('binary')
           port = address.readUInt16BE(2 + address[1])
+          address = address.subarray(4 + address[1])
           break
         case 1: // IPv4
-          addr = inetNtoa(address.slice(1, 5))
+          addr = inet_ntoa(address.subarray(1, 5))
           port = address.readUInt16BE(5)
+          address = address.subarray(7)
           break
         case 4: // IPv6
-          addr = inetNtop(address.slice(1, 17))
+          addr = inet_ntop(address.subarray(1, 17))
           port = address.readUInt16BE(17)
+          address = address.subarray(19)
           break
         default:
-          warnlog('invalid atyp', dump(from, to, readyState))
+          errorlog('invalid atyp', dump(from, to, stage))
           ws.terminate()
           return
       }
+      if (address.length !== 0) {
+        payloads.push(address)
+      }
       to = `${addr}:${port}`
-      debuglog(`remote address parsed: ${addr}:${port}`)
+      debuglog(`remote address parsed: ${to}`)
 
       try {
-        remote = await createAndConnect(port, addr)
+        ws.pause()
+        remote = await connect(port, addr)
+        ws.resume()
       } catch (err) {
-        errorlog(err.message, dump(from, to, readyState))
+        infolog(err.message, dump(from, to, stage))
         ws.terminate()
         return
       }
+      debuglog('remote connected')
 
       if (ws.readyState !== WebSocket.OPEN) {
         remote.destroy()
         return
       }
-
-      readyState = OPEN
-      ws.resume()
-      debuglog('remote connected')
 
       const salt = randomBytes(SALT_SIZE)
       tx.push(salt)
@@ -175,12 +228,12 @@ wss.on('connection', (ws, req) => {
       remote.on('data', (data) => {
         debuglog('reply received')
         while (data.length > 0) {
-          const payload = data.slice(0, 0x3fff)
+          const payload = data.subarray(0, 0x3fff)
           const length = Buffer.alloc(2)
           length.writeUInt16BE(payload.length)
           tx.push(cipher.encrypt(length))
           tx.push(cipher.encrypt(payload))
-          data = data.slice(0x3fff)
+          data = data.subarray(0x3fff)
         }
         data = null
 
@@ -190,7 +243,7 @@ wss.on('connection', (ws, req) => {
       })
 
       // 'close' event will be called
-      remote.on('error', (err) => errorlog(err.message, dump(from, to, readyState)))
+      remote.on('error', (err) => errorlog(err.message, dump(from, to, stage)))
       remote.on('end', () => remote.end())
       remote.on('close', () => {
         debuglog('remote disconnected')
@@ -198,13 +251,16 @@ wss.on('connection', (ws, req) => {
       })
     }
 
-    ws.pause()
+    stage = WRITING
     while (payloads.length !== 0) {
-      if (remote.write(payloads.shift()) === false)
+      if (remote.write(payloads.shift()) === false) {
+        ws.pause()
         await new Promise(resolve => remote.once('drain', resolve))
+        ws.resume()
+      }
       debuglog('payload sent')
     }
-    ws.resume()
+    stage = OPEN
   })
 
   ws.on('close', () => {
@@ -214,8 +270,5 @@ wss.on('connection', (ws, req) => {
   })
 })
 
-server.listen(PORT, () => {
-  infolog(`server running at http://0.0.0.0:${PORT}/`)
-})
 
-const dump = (from, to, readyState) => `from=${from.blue} to=${to.cyan} readyState=${readyState.green}`
+server.listen(PORT, () => infolog(`server running at http://0.0.0.0:${PORT}/`))
